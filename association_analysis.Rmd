@@ -1,0 +1,826 @@
+---
+title: "Association Analysis of Symptom Severity and Treatment in HIV Patients"
+author: "Sebastian Villarroel"
+date: "08/22/2025"
+output: pdf_document
+---
+
+```{r, echo=FALSE, include=FALSE, eval=TRUE}
+# Libraries
+library(nnet)
+library(MASS)
+```
+
+## Introduction
+
+Fatigue and weakness are two of the most common and burdensome symptoms reported by people living with HIV (PLHIV). Both symptoms reduce quality of life and interfere with daily functioning, yet their relationship to each other, and to interventions designed to alleviate them, remains poorly understood. Determining whether treatment reduces fatigue directly, weakness directly, or whether its effects on weakness occur indirectly through fatigue has important implications for symptom management and care planning.
+
+This study examined associations between fatigue, weakness, and treatment in in people living with HIV (PLHIV). Data were drawn from a randomized clinical trial of 609 participants, each of whom reported symptom severity at baseline, one month, and three months. Fatigue (SSC-F) and weakness (SSC-W) were measured on a four-level self-reported scale (0 = absent, 3 = severe), and participants were assigned either to the intervention or control group (IC). After excluding incomplete cases, 1,343 symptom reports were available for analysis.
+
+Our analytic strategy proceeded in three stages. First, we modeled fatigue as a function of weakness and treatment group using multinomial and ordinal regression, selecting the best-fitting specification by likelihood ratio tests, AIC, and BIC. Second, we modeled weakness as a function of fatigue and treatment group using the same approach. Finally, we applied log-linear models to the joint distribution of fatigue, weakness, and treatment to assess independence, conditional dependence, and interaction structures. Together, these complementary methods allowed us to triangulate findings and determine whether the intervention acts primarily on fatigue, weakness, or both.
+
+## Data Preparation
+
+This analysis focused on three categorical variables:
+
+SSC-F (Fatigue): 4 levels (0–3)
+
+SSC-W (Weakness): 4 levels (0–3)
+
+IC (Treatment Group): 2 levels (0 = control, 1 = intervention)
+
+The data were drawn from the file joachim-ic.csv, where each row represented a unique symptom report from a participant at a given time point. The relevant variables were:
+
+ssc2: Fatigue level (SSC-F)
+
+ssc4: Weakness level (SSC-W)
+
+ic: Treatment group (0 = control, 1 = intervention)
+
+Although the original trial design included repeated measures across time, the TIME variable was disregarded for this analysis. As a result, each symptom report was treated as an independent observation of symptom severity and treatment group.
+
+Prior to analysis, the dataset was checked for missing values and duplicates. After excluding incomplete records, the final dataset consisted of 1,343 symptom reports.
+
+For regression models, the categorical variables were converted into factors or ordered factors, as appropriate. This step was essential for fitting multinomial and ordinal regression models, where the goal was to determine which explanatory variables best predicted the response.
+
+For log-linear models, the analysis instead focused on contingency tables that summarized frequencies across combinations of categorical variables. To accomplish this, a three-dimensional contingency table was created using xtabs() to aggregate counts of fatigue, weakness, and treatment group.
+
+
+```{r, echo=FALSE, include=FALSE, eval=TRUE}
+# Data preparation
+data <- read.csv("clinical-trial-ic.csv")
+
+# Dataset for the regression models
+data$ssc2 <- factor(data$ssc2)
+data$ssc2_ord <- ordered(data$ssc2, levels = c("0", "1", "2", "3"))
+data$ssc4 <- factor(data$ssc4)
+data$ssc4_ord <- ordered(data$ssc4, levels = c("0", "1", "2", "3"))
+data$ic <- factor(data$ic)
+
+# Contingency table for the loglinear models
+table3d <- xtabs(~ ssc2 + ssc4 + ic, data = data)
+dim(table3d)
+str(table3d)
+```
+
+## 1. Regression model Fatigue given Weakness and Treatment
+
+Here, we aimed to understand how fatigue levels were influenced by weakness and treatment group. Fatigue was measured as a categorical variable, making both multinomial and ordinal regression models appropriate choices for analysis.
+
+We fitted five models under both the multinomial and ordinal frameworks:
+
+- Null model: No predictors (intercept only)
+
+- Treatment-only model: SSC-F ~ IC
+
+- Weakness-only model: SSC-F ~ SSC-W
+
+- Additive model: SSC-F ~ SSC-W + IC
+
+- Interaction model: SSC-F ~ SSC-W * IC
+
+Model performance was evaluated using AIC, BIC, and likelihood ratio tests (LRTs) between nested models. LRTs evaluate whether a more complex model provides a significantly better fit than a simpler one.
+
+We used manual likelihood ratio tests (LRTs) for **multinomial regression** because this approach is more flexible than anova() and is often necessary when using multinom() from the nnet package. This is because anova() works better with polr() or glm objects, whereas multinom() does not store deviance in a standard format, making manual LRT computation more reliable.
+
+For the **ordinal models**, we used anova(). While it is theoretically valid to use the 1 - pchisq(...) approach for likelihood ratio tests, anova(model1, model2) is better suited for ordinal models since it automatically checks whether the models are nested, uses the correct deviance, and handles degrees of freedom properly. If we had manually computed LRTs (as with multinomial models), this could have caused issues with polr() because its logLik includes threshold parameters that are not part of coef(). As a result, using length(coef(...)) may underestimate the number of parameters, especially the intercepts (thresholds).
+
+**Multinomial regression models SSC-F given SSC-W and IC**
+
+```{r, echo=FALSE, include=FALSE, eval=TRUE}
+# Multinomial regression models
+m1 <- multinom(ssc2 ~ 1, data = data) # Null model
+m2 <- multinom(ssc2 ~ ic, data = data) # Treatment only
+m3 <- multinom(ssc2 ~ ssc4, data = data) # Weakness only
+m4 <- multinom(ssc2 ~ ssc4 + ic, data = data) # Additive effects
+m5 <- multinom(ssc2 ~ ssc4 * ic, data = data) # Additive + interaction
+```
+
+```{r, echo=FALSE, include=TRUE, eval=TRUE}
+# AIC and BIC multinomial models
+cat("Model m1 (Null): AIC =", AIC(m1), "  |  BIC =", BIC(m1), "\n")
+cat("Model m2 (IC only): AIC =", AIC(m2), "  |  BIC =", BIC(m2), "\n")
+cat("Model m3 (Weakness only): AIC =", AIC(m3), "  |  BIC =", BIC(m3), "\n")
+cat("Model m4 (Additive): AIC =", AIC(m4), "  |  BIC =", BIC(m4), "\n")
+cat("Model m5 (Interaction): AIC =", AIC(m5), "  |  BIC =", BIC(m5), "\n")
+```
+
+```{r, echo=FALSE, include=TRUE, eval=TRUE}
+# Likelihood ratio test for multinomial models
+# Null (m1) vs Treatment only (m2)
+lrt_m1_m2 <- 1 - pchisq(m1$deviance - m2$deviance,
+                        df = length(coef(m2)) - length(coef(m1)))
+
+# Null (m1) vs Weakness only (m3)
+lrt_m1_m3 <- 1 - pchisq(m1$deviance - m3$deviance,
+                        df = length(coef(m3)) - length(coef(m1)))
+
+# Weakness only (m3) vs Additive model (m4)
+lrt_m3_m4 <- 1 - pchisq(m3$deviance - m4$deviance,
+                        df = length(coef(m4)) - length(coef(m3)))
+
+# Additive model (m4) vs Interaction model (m5)
+lrt_m4_m5 <- 1 - pchisq(m4$deviance - m5$deviance,
+                        df = length(coef(m5)) - length(coef(m4)))
+
+cat("m1 vs m2 (Null vs Treatment): (LRT) p-val =", lrt_m1_m2, "\n")
+cat("m1 vs m3 (Null vs Weakness): (LRT) p-val =", lrt_m1_m3, "\n")
+cat("m3 vs m4 (Weakness vs Additive): (LRT) p-val =", lrt_m3_m4, "\n")
+cat("m4 vs m5 (Additive vs Interaction): (LRT) p-val =", lrt_m4_m5, "\n")
+```
+
+
+**Ordinal regression models SSC-F given SSC-W and IC**
+
+```{r, echo=FALSE, include=FALSE, eval=TRUE}
+# Ordinal regression models
+o1 <- polr(ssc2_ord ~ 1, data = data) # Null model
+o2 <- polr(ssc2_ord ~ ic, data = data) # Treatment only
+o3 <- polr(ssc2_ord ~ ssc4, data = data) # Weakness only
+o4 <- polr(ssc2_ord ~ ssc4 + ic, data = data) # Additive
+o5 <- polr(ssc2_ord ~ ssc4 * ic, data = data) # Interaction
+```
+
+
+```{r, echo=FALSE, include=TRUE, eval=TRUE}
+# AIC and BIC ordinal models
+cat("Model o1 (Null): AIC =", AIC(o1), "  |  BIC =", BIC(o1), "\n")
+cat("Model o2 (IC only): AIC =", AIC(o2), "  |  BIC =", BIC(o2), "\n")
+cat("Model o3 (Weakness only): AIC =", AIC(o3), "  |  BIC =", BIC(o3), "\n")
+cat("Model o4 (Additive): AIC =", AIC(o4), "  |  BIC =", BIC(o4), "\n")
+cat("Model o5 (Interaction): AIC =", AIC(o5), "  |  BIC =", BIC(o5), "\n")
+```
+
+```{r, echo=FALSE, include=TRUE, eval=TRUE}
+# Likelihood ratio test for ordinal models 
+# Null (o1) vs Treatment only (o2)
+a1 <- anova(o1, o2)
+
+# Null (o1) vs Weakness only (o3)
+a2 <- anova(o1, o3)
+
+# Weakness (o3) only vs Additive (o4)
+a3 <- anova(o3, o4)
+
+# Additive (o4) vs Interaction (o5)
+a4 <- anova(o4, o5)
+
+
+cat("o1 vs o2 (Null vs Treatment): (LRT) p-val =", a1$`Pr(Chi)`[2], "\n")
+cat("o1 vs o3 (Null vs Weakness): (LRT) p-val =", a2$`Pr(Chi)`[2], "\n")
+cat("o3 vs o4 (Weakness vs Additive): (LRT) p-val =", a3$`Pr(Chi)`[2], "\n")
+cat("o4 vs o5 (Additive vs Interaction): (LRT) p-val =", a4$`Pr(Chi)`[2], "\n")
+```
+
+
+After evaluating the regression models for fatigue (SSC-F) using both multinomial and ordinal frameworks, we concluded that the additive model including both weakness (SSC-W) and treatment group (IC) as main effects was best supported by the data. This model consistently showed the lowest AIC and BIC in both frameworks. In the multinomial case, the additive model achieved an AIC of 2707.11 and BIC of 2785.15, while the corresponding ordinal model had an AIC of 2854.90 and BIC of 2891.32. This suggested that including both predictors improved model performance, while adding an interaction term did not offer sufficient benefit to justify the additional complexity.
+
+The likelihood ratio tests further supported this conclusion. When comparing nested models, both treatment and weakness significantly improved model fit over the null model. The comparison between the weakness-only and additive models showed a statistically significant improvement, indicating that both predictors provided meaningful contributions. However, the interaction between weakness and treatment was not significant in either framework, suggesting that the effect of treatment on fatigue did not vary depending on a participant’s weakness level. This meant the treatment appeared to have a consistent impact on fatigue across all levels of weakness.
+
+Although fatigue was an ordinal variable—and ordinal regression is therefore the theoretically preferred framework—we fitted both ordinal and multinomial models. This was done to validate our findings across approaches and to ensure robustness. Multinomial regression, which treats the outcome as nominal, is more flexible and does not assume a specific ordering of categories. By comparing results from both types of models, we confirmed that the key relationships held regardless of framework, which strengthened the validity of our conclusion.
+
+Despite the multinomial model having slightly lower AIC and BIC values, we ultimately preferred the ordinal model for interpretation. This was because ordinal regression takes into account the natural ordering of fatigue levels and provides more interpretable results through cumulative odds. Additionally, the ordinal model achieved similar performance with fewer parameters, making it more generalizable. It also avoided the potential overfitting risk associated with multinomial models, which estimate separate effects for each level of the outcome.
+
+Therefore, we chose the ordinal additive model as the final model for interpreting the relationship between fatigue, weakness, and treatment. This model indicated that individuals with higher weakness levels were more likely to report higher fatigue, and that those in the intervention group were significantly less likely to experience severe fatigue, regardless of their weakness level.
+
+**2. Regression model Weakness given Fatigue and Treatment**
+
+Here, we examined how weakness levels were influenced by fatigue and treatment group. Since weakness was also measured as a categorical variable with four ordered levels, we again applied both multinomial and ordinal regression models.
+
+The same five nested models were fitted to assess model fit:
+
+- Null model (intercept only)
+
+- Treatment-only model (SSC-W ~ IC)
+
+- Fatigue-only model (SSC-W ~ SSC-F)
+
+- Additive model (SSC-W ~ SSC-F + IC)
+
+- Interaction model (SSC-W ~ SSC-F * IC)
+
+Model comparisons were made using AIC, BIC, and likelihood ratio tests (LRTs) between nested models. As described before, manual LRTs were used for multinomial models due to limitations in how multinom() handles deviance and parameters, while anova() is preferred for ordinal models fitted with polr() to ensure correct handling of nested structures and parameter counts.
+
+This modeling approach helped us evaluate the extent to which fatigue and treatment predicted weakness, and whether their effects interacted.
+
+**Multinomial regression models SSC-W given SSC-F and IC**
+
+```{r, echo=FALSE, include=FALSE, eval=TRUE}
+# Multinomial regression models
+mm1 <- multinom(ssc4 ~ 1, data = data) # Null
+mm2 <- multinom(ssc4 ~ ic, data = data) # IC only
+mm3 <- multinom(ssc4 ~ ssc2, data = data) # Fatigue only
+mm4 <- multinom(ssc4 ~ ssc2 + ic, data = data) # Additive
+mm5 <- multinom(ssc4 ~ ssc2 * ic, data = data) # Interaction
+```
+
+
+```{r, echo=FALSE, include=TRUE, eval=TRUE}
+# AIC and BIC multinomial models
+cat("mm1 (Null): AIC =", AIC(mm1), " | BIC =", BIC(mm1), "\n")
+cat("mm2 (IC only): AIC =", AIC(mm2), " | BIC =", BIC(mm2), "\n")
+cat("mm3 (Fatigue only): AIC =", AIC(mm3), " | BIC =", BIC(mm3), "\n")
+cat("mm4 (Additive): AIC =", AIC(mm4), " | BIC =", BIC(mm4), "\n")
+cat("mm5 (Interaction): AIC =", AIC(mm5), " | BIC =", BIC(mm5), "\n")
+```
+
+```{r, echo=FALSE, include=TRUE, eval=TRUE}
+#Likelihood ratio test for multinomial models
+# Null (mm1) vs Treatment only (mm2)
+lrt_mm1_mm2 <- 1 - pchisq(mm1$deviance - mm2$deviance, 
+                          df = length(coef(mm2)) - length(coef(mm1)))
+
+# Null (mm1) vs Fatigue only (mm3)
+lrt_mm1_mm3 <- 1 - pchisq(mm1$deviance - mm3$deviance, 
+                          df = length(coef(mm3)) - length(coef(mm1)))
+
+# Fatigue only (mm3) vs Additive model (mm4)
+lrt_mm3_mm4 <- 1 - pchisq(mm3$deviance - mm4$deviance, 
+                          df = length(coef(mm4)) - length(coef(mm3)))
+
+# # Additive model (mm4) vs Interaction model (mm5)
+lrt_mm4_mm5 <- 1 - pchisq(mm4$deviance - mm5$deviance, 
+                          df = length(coef(mm5)) - length(coef(mm4)))
+
+
+cat("mm1 vs mm2 (Null vs IC): (LRT) p-val =", lrt_mm1_mm2, "\n")
+cat("mm1 vs mm3 (Null vs Fatigue): (LRT) p-val =", lrt_mm1_mm3, "\n")
+cat("mm3 vs mm4 (Fatigue vs Additive): (LRT) p-val =", lrt_mm3_mm4, "\n")
+cat("mm4 vs mm5 (Additive vs Interaction): (LRT) p-val =", lrt_mm4_mm5, "\n")
+```
+
+**Ordinal regression models SSC-W given SSC-F and IC**
+
+```{r, echo=FALSE, include=FALSE, eval=TRUE}
+# Ordinal regression models
+oo1 <- polr(ssc4_ord ~ 1, data = data) # Null
+oo2 <- polr(ssc4_ord ~ ic, data = data)  # IC only
+oo3 <- polr(ssc4_ord ~ ssc2_ord, data = data) # Fatigue only
+oo4 <- polr(ssc4_ord ~ ssc2_ord + ic, data = data) # Additive
+oo5 <- polr(ssc4_ord ~ ssc2_ord * ic, data = data) # Interaction
+```
+
+
+```{r, echo=FALSE, include=TRUE, eval=TRUE}
+# AIC and BIC ordinal models
+cat("oo1 (Null): AIC =", AIC(oo1), " | BIC =", BIC(oo1), "\n")
+cat("oo2 (IC only): AIC =", AIC(oo2), " | BIC =", BIC(oo2), "\n")
+cat("oo3 (Fatigue only): AIC =", AIC(oo3), " | BIC =", BIC(oo3), "\n")
+cat("oo4 (Additive): AIC =", AIC(oo4), " | BIC =", BIC(oo4), "\n")
+cat("oo5 (Interaction): AIC =", AIC(oo5), " | BIC =", BIC(oo5), "\n")
+```
+
+```{r, echo=FALSE, include=TRUE, eval=TRUE}
+# Likelihood ratio test for ordinal models 
+# Null (oo1) vs Treatment only (oo2)
+aa1 <- anova(oo1, oo2)
+
+# Null (oo1) vs Fatigue only (oo3)
+aa2 <- anova(oo1, oo3)
+
+# Fatigue (oo3) vs Additive (oo4)
+aa3 <- anova(oo3, oo4)
+
+# Additive (oo4) vs Interaction (oo5)
+aa4 <- anova(oo4, oo5)
+
+cat("oo1 vs oo2 (Null vs IC): (LRT) p-val =", aa1$`Pr(Chi)`[2], "\n")
+cat("oo1 vs oo3 (Null vs Fatigue): (LRT) p-val =", aa2$`Pr(Chi)`[2], "\n")
+cat("oo3 vs oo4 (Fatigue vs Additive): (LRT) p-val =", aa3$`Pr(Chi)`[2], "\n")
+cat("oo4 vs oo5 (Additive vs Interaction): (LRT) p-val =", aa4$`Pr(Chi)`[2], "\n")
+
+```
+
+Here, we analyzed which factors best explained the levels of weakness (SSC-W), considering both fatigue (SSC-F) and treatment group (IC) as potential predictors.
+
+In the multinomial models, we found that the fatigue-only model had the lowest AIC and BIC (AIC = 2800.89, BIC = 2863.32), suggesting it was the best-performing model. While the additive model that included both fatigue and treatment had a slightly lower AIC (2798.23), its BIC (2876.27) was higher than that of the fatigue-only model. This indicated that, although adding treatment slightly improved fit, the improvement was not worth the increased model complexity. Furthermore, likelihood ratio tests confirmed that both fatigue and treatment significantly improved model fit over the null, and adding treatment to the fatigue-only model was statistically significant (p = 0.034). However, the interaction term between fatigue and treatment was not significant (p = 0.342), suggesting that treatment had a consistent effect across all fatigue levels.
+
+Turning to the ordinal models, which are better suited for an ordinal response like weakness, the best-fitting model based on both AIC and BIC was again the fatigue-only model (AIC = 2955.78, BIC = 2986.99). Adding treatment did not improve the model meaningfully, as the additive model had a slightly higher AIC (2957.61) and BIC (2994.03). The likelihood ratio test between the fatigue-only and additive models further confirmed that the inclusion of treatment did not significantly improve model fit (p = 0.683), and the interaction term was also not significant (p = 0.157). This provided strong evidence that fatigue alone was the dominant predictor of weakness, and that the treatment intervention did not appear to have an additional impact on weakness once fatigue was accounted for.
+
+While both modeling frameworks suggested similar conclusions, we ultimately favored the ordinal model for final interpretation, as it respects the natural ordering of the response variable. It also avoids overfitting while providing interpretable cumulative odds. The results indicated that higher levels of fatigue were strongly associated with increased weakness, and this relationship held regardless of treatment group. Unlike the case for fatigue in the previous regression modeling, where treatment had a clear independent effect, here we found no evidence that treatment reduced weakness beyond its association with fatigue. This suggested that any observed improvement in weakness was primarily mediated through reductions in fatigue rather than a direct treatment effect on weakness itself.
+
+**3. Log-linear models**
+
+A different approach to understanding the relationship between fatigue (SSC-F), weakness (SSC-W), and treatment group (IC) in people living with HIV (PLHIV) was to fit a series of log-linear models. These models allowed us to assess various forms of independence and interaction between variables. A total of nine models were fitted to evaluate different hypotheses of dependence and independence among the three categorical variables.
+
+**Saturated Model [123]:** This model includes all main effects, all two-way interactions, and the three-way interaction among SSC-F, SSC-W, and IC. It makes no assumptions about independence and fits the data perfectly. It served as the benchmark for evaluating simpler models.
+
+```{r, echo=FALSE, include=TRUE, eval=TRUE}
+# Saturated model [123]
+saturated.loglin <- loglin(table3d, margin = list(c(1,2,3)), fit = TRUE, param = TRUE)
+
+cat("Likelihood ratio statistic:",saturated.loglin$lrt, "\n")
+cat("P-value for testing H0 based on G^2:", 1 - pchisq(saturated.loglin$lrt, saturated.loglin$df), "\n")
+```
+
+
+**Complete Independence Model [1][2][3]:** This model assumes that all three variables are mutually independent. In this context, it means that the level of fatigue a person experiences is unrelated to their weakness or treatment group; likewise, weakness and treatment are also unrelated.
+
+```{r, echo=FALSE, include=TRUE, eval=TRUE}
+# Complete independence [1][2][3]
+indep.loglin <- loglin(table3d, margin = list(1,2,3), fit = TRUE, param = TRUE)
+
+cat("Likelihood ratio statistic:",indep.loglin$lrt, "\n")
+cat("X^2 statistic:",indep.loglin$pearson, "\n")
+cat("P-value for testing H0 based on G^2:", 1 - pchisq(indep.loglin$lrt, indep.loglin$df), "\n")
+cat("P-value for testing H0 based on X^2:",1 - pchisq(indep.loglin$pearson, indep.loglin$df), "\n")
+```
+
+
+**One variable independent of two [1][23]:** This model assumes that fatigue (SSC-F) is independent of the joint combination of weakness (SSC-W) and treatment group (IC). In other words, knowing a person’s level of weakness and whether they received treatment does not provide any information about their level of fatigue.
+
+```{r, echo=FALSE, include=TRUE, eval=TRUE}
+# One variable independent of two [1][23]
+X1indepX2X3 <- loglin(table3d, margin = list(1,c(2,3)), fit = TRUE, param = TRUE)
+
+cat("Likelihood ratio statistic:",X1indepX2X3$lrt, "\n")
+cat("X^2 statistic:",X1indepX2X3$pearson, "\n")
+cat("P-value for testing H0 based on G^2:", 1 - pchisq(X1indepX2X3$lrt, X1indepX2X3$df), "\n")
+cat("P-value for testing H0 based on X^2:",1 - pchisq(X1indepX2X3$pearson, X1indepX2X3$df), "\n")
+```
+
+
+**One variable independent of two [2][13]:** Here, weakness (SSC-W) is assumed to be independent of the joint combination of fatigue (SSC-F) and treatment group (IC). This implies that once a person’s fatigue level and treatment status are known, this information does not provide any additional insight into their level of weakness.
+
+```{r, echo=FALSE, include=TRUE, eval=TRUE}
+# One variable independent of two [2][13]
+X2indepX1X3 <- loglin(table3d, margin = list(2,c(1,3)), fit = TRUE, param = TRUE)
+
+cat("Likelihood ratio statistic:",X2indepX1X3$lrt, "\n")
+cat("X^2 statistic:",X2indepX1X3$pearson, "\n")
+cat("P-value for testing H0 based on G^2:", 1 - pchisq(X2indepX1X3$lrt, X2indepX1X3$df), "\n")
+cat("P-value for testing H0 based on X^2:",1 - pchisq(X2indepX1X3$pearson, X2indepX1X3$df), "\n")
+```
+
+
+**One variable independent of two [3][12]:** This model assumes that the treatment group (IC) is independent of a participant’s fatigue (SSC-F) and weakness (SSC-W) levels. In other words, knowing a person’s fatigue and weakness does not provide any information about whether they were in the control or intervention group.
+
+```{r, echo=FALSE, include=TRUE, eval=TRUE}
+# One variable independent of two [3][12]
+X3indepX1X2 <- loglin(table3d, margin = list(3,c(1,2)), fit = TRUE, param = TRUE)
+
+cat("Likelihood ratio statistic:",X3indepX1X2$lrt, "\n")
+cat("X^2 statistic:",X3indepX1X2$pearson, "\n")
+cat("P-value for testing H0 based on G^2:", 1 - pchisq(X3indepX1X2$lrt, X3indepX1X2$df), "\n")
+cat("P-value for testing H0 based on X^2:",1 - pchisq(X3indepX1X2$pearson, X3indepX1X2$df), "\n")
+```
+
+
+**Conditional Independence [12][13]:** This model assumes that weakness (SSC-W) and treatment group (IC) are independent after accounting for fatigue (SSC-F). In other words, once a participant’s fatigue level is known, their treatment status provides no additional information about their weakness level, and vice versa.
+
+```{r, echo=FALSE, include=TRUE, eval=TRUE}
+# Conditional Independence [12][13]
+X2indepX3givenX1 <- loglin(table3d, margin = list(c(1,2),c(1,3)), fit = TRUE, param = TRUE)
+
+cat("Likelihood ratio statistic:",X2indepX3givenX1$lrt, "\n")
+cat("X^2 statistic:",X2indepX3givenX1$pearson, "\n")
+cat("P-value for testing H0 based on G^2:", 1 - pchisq(X2indepX3givenX1$lrt, X2indepX3givenX1$df), "\n")
+cat("P-value for testing H0 based on X^2:",1 - pchisq(X2indepX3givenX1$pearson, X2indepX3givenX1$df), "\n")
+```
+
+
+**Conditional Independence [12][23]:** This model assumes that fatigue (SSC-F) and treatment group (IC) are independent given weakness (SSC-W). In other words, once a person’s weakness level is known, their treatment status provides no additional insight into their level of fatigue.
+
+```{r, echo=FALSE, include=TRUE, eval=TRUE}
+# Conditional Independence [12][23]
+X1indepX3givenX2 <- loglin(table3d, margin = list(c(1,2),c(2,3)), fit = TRUE, param = TRUE)
+
+cat("Likelihood ratio statistic:",X1indepX3givenX2$lrt, "\n")
+cat("X^2 statistic:",X1indepX3givenX2$pearson, "\n")
+cat("P-value for testing H0 based on G^2:", 1 - pchisq(X1indepX3givenX2$lrt,X1indepX3givenX2$df), "\n")
+cat("P-value for testing H0 based on X^2:",1 - pchisq(X1indepX3givenX2$pearson, X1indepX3givenX2$df), "\n")
+```
+
+
+**Conditional Independence [13][23]:** In this model, fatigue (SSC-F) and weakness (SSC-W) are assumed to be conditionally independent given the treatment group (IC). In other words, for participants within the same treatment group, knowing their fatigue level does not provide any additional information about their weakness, and vice versa.
+
+```{r, echo=FALSE, include=TRUE, eval=TRUE}
+# Conditional Independence [13][23]
+X1indepX2givenX3 <- loglin(table3d, margin = list(c(1,3),c(2,3)), fit = TRUE, param = TRUE)
+
+cat("Likelihood ratio statistic:",X1indepX2givenX3$lrt, "\n")
+cat("X^2 statistic:",X1indepX2givenX3$pearson, "\n")
+cat("P-value for testing H0 based on G^2:", 1 - pchisq(X1indepX2givenX3$lrt,X1indepX2givenX3$df), "\n")
+cat("P-value for testing H0 based on X^2:",1 - pchisq(X1indepX2givenX3$pearson, X1indepX2givenX3$df), "\n")
+```
+
+
+**Model of No Second Order Interaction [12][13][23]:** This model includes all pairwise (second-order) interactions but no three-way interaction. It assumes that the relationship between any two variables may depend on the third, but the full three-way interaction is unnecessary to explain the observed counts.
+
+These models allowed us to systematically test hypotheses about how the three variables related to each other. Using goodness-of-fit statistics, we assessed which model most accurately represented the data structure without overfitting.
+
+```{r, echo=FALSE, include=TRUE, eval=TRUE}
+# Model of No Second Order Interaction [12][13][23]
+no2nd.loglin <- loglin(table3d, margin = list(c(1,2),c(1,3),c(2,3)), fit = TRUE, param = TRUE)
+
+cat("Likelihood ratio statistic:",no2nd.loglin$lrt, "\n")
+cat("X^2 statistic:",no2nd.loglin$pearson, "\n")
+cat("P-value for testing H0 based on G^2:", 1 - pchisq(no2nd.loglin$lrt,no2nd.loglin$df), "\n")
+cat("P-value for testing H0 based on X^2:",1 - pchisq(no2nd.loglin$pearson, no2nd.loglin$df), "\n")
+```
+
+
+Among the nine log-linear models fitted, the saturated model [123] yielded a likelihood ratio statistic of zero, indicating a perfect fit to the data. However, this result was expected because the saturated model includes all possible interactions and therefore always reproduces the observed counts exactly. While it provided a useful reference point, it tended to overfit and did not offer meaningful insight into the underlying associations. For that reason, we set it aside.
+
+The no second-order interaction model [12][13][23] showed a relatively low likelihood ratio statistic of 10.10 with a p-value of 0.34, indicating no significant lack of fit. This suggested that including all pairwise associations among fatigue, weakness, and treatment was sufficient, and that the more complex three-way interaction was not necessary. This model was interpretable and a strong candidate.
+
+Two conditional independence models also performed reasonably well. The [12][13] model, which assumes weakness and treatment are conditionally independent given fatigue, had a likelihood ratio statistic of 18.76 and a p-value of 0.094, indicating acceptable fit at the 10% level (though not at 5%). In contrast, the [12][23] model, which assumes fatigue and treatment are conditionally independent given weakness, yielded a likelihood ratio statistic of 22.29 with a p-value of 0.034, indicating significant lack of fit at the 5% level.
+
+Finally, the [3][12] model, which assumes treatment is independent of the joint relationship between fatigue and weakness, produced a likelihood ratio statistic of 38.38 with a p-value of 0.0008. This result clearly indicated poor fit, so this model was not considered further despite its simpler structure.
+
+Taken together, the models [12][13][23] and [12][13] emerged as the most promising based on both statistical fit and interpretability. In the next phase, we conducted likelihood ratio tests between nested models to determine whether the inclusion of specific interaction terms significantly improved model fit and to ultimately select the most well-supported model.
+
+**4. Model Selection**
+
+To determine the best-fitting model, we performed likelihood ratio tests (LRTs) between nested models, testing whether a simpler model was adequate or if a more complex model provided a significantly better fit. All tests were conducted at the $\alpha = 0.05$ significance level.
+
+```{r, echo=FALSE, include=TRUE, eval=TRUE}
+# Conditional [12][13] vs No second order [12][13][23] 
+cat("Conditional [12][13] vs No second order [12][13][23]: p_val =",1 - pchisq(X2indepX3givenX1$lrt-no2nd.loglin$lrt, X2indepX3givenX1$df-no2nd.loglin$df))
+```
+
+The null hypothesis ($H_0$) was that the simpler model [12][13] fit the data adequately. Since p = 0.0341 < 0.05, we rejected $H_0$. Therefore, the interaction between SSC-W and IC was required, and model [12][13] was not adequate.
+ 
+```{r, echo=FALSE, include=TRUE, eval=TRUE}
+# Conditional [12][23] vs No second order [12][13][23]
+cat("Conditional [12][23] vs No second order [12][13][23]: p-val = ",1 - pchisq(X1indepX3givenX2$lrt-no2nd.loglin$lrt, X1indepX3givenX2$df-no2nd.loglin$df))
+```
+
+The null hypothesis ($H_0$) was that the simpler model [12][23] fit the data adequately. Since p = 0.00675 < 0.05, we rejected $H_0$. Therefore, the interaction between SSC-F and IC was required, and model [12][23] was not adequate.
+
+We did not perform a likelihood ratio test for model [3][12], as both simpler conditional independence models [12][13] and [12][23] had already been rejected. Model [3][12] made even stronger independence assumptions and was therefore unlikely to be supported.
+
+The no second-order interaction model [12][13][23] provided the best balance between goodness of fit and model simplicity. It captured all necessary pairwise interactions among fatigue (SSC-F), weakness (SSC-W), and treatment group (IC) without requiring a more complex three-way interaction.
+
+## Conclusion
+
+The three modeling approaches—multinomial regression, ordinal regression, and log-linear analysis—consistently showed that fatigue (SSC-F) and weakness (SSC-W) were strongly related, and that treatment (IC) selectively impacted these symptoms in people living with HIV. When fatigue was modeled as the outcome, the additive model including both weakness and treatment was best supported by AIC, BIC, and likelihood ratio tests, indicating that fatigue increased with greater weakness but was significantly reduced in the intervention group regardless of weakness level. In contrast, when weakness was modeled as the outcome, fatigue alone explained most of the variation, while treatment contributed little beyond this. Although a small treatment effect appeared in multinomial regression, it was not statistically significant in the more interpretable ordinal models, suggesting that any reductions in weakness were largely mediated through treatment’s effect on fatigue.
+
+The log-linear analysis reinforced these findings. Among nine candidate models, the specification with all pairwise associations [12][13][23] provided the best fit, confirming that fatigue–weakness, fatigue–treatment, and weakness–treatment relationships were important, while a three-way interaction was unnecessary. Simpler conditional independence models, such as [12][13] and [12][23], were rejected in hypothesis testing, again supporting the conclusion that treatment influenced weakness primarily through its association with fatigue.
+
+These results highlight the importance of targeting fatigue in clinical care, since reducing fatigue may in turn alleviate weakness. At the same time, the analysis has limitations: repeated symptom reports were treated as independent, outcomes were self-reported on ordinal scales, and no adjustments were made for other clinical or demographic factors. Future work should apply longitudinal methods that respect within-person correlation, examine adjusted effect sizes, and test mediation more directly to clarify whether treatment effects on weakness operate mainly through fatigue. Despite these limitations, the evidence provides a clear message: addressing fatigue directly is likely to yield the greatest overall benefit, with secondary improvements in weakness following as a consequence.
+
+## Appendix
+
+```{r, echo=TRUE, eval=FALSE}
+# Libraries
+library(nnet)
+library(MASS)
+```
+
+**Data Preparation**
+
+```{r, echo=TRUE, eval=FALSE}
+# Data preparation
+data <- read.csv("joachim-ic.csv")
+
+# Dataset for the regression models
+data$ssc2 <- factor(data$ssc2)
+data$ssc2_ord <- ordered(data$ssc2, levels = c("0", "1", "2", "3"))
+data$ssc4 <- factor(data$ssc4)
+data$ssc4_ord <- ordered(data$ssc4, levels = c("0", "1", "2", "3"))
+data$ic <- factor(data$ic)
+
+# Contingency table for the loglinear models
+table3d <- xtabs(~ ssc2 + ssc4 + ic, data = data)
+dim(table3d)
+str(table3d)
+```
+
+##1. Regression model Fatigue given Weakness and Treatment
+
+**Multinomial regression models SSC-F given SSC-W and IC**
+
+```{r, echo=TRUE, eval=FALSE}
+# Multinomial regression models
+m1 <- multinom(ssc2 ~ 1, data = data) # Null model
+m2 <- multinom(ssc2 ~ ic, data = data) # Treatment only
+m3 <- multinom(ssc2 ~ ssc4, data = data) # Weakness only
+m4 <- multinom(ssc2 ~ ssc4 + ic, data = data) # Additive effects
+m5 <- multinom(ssc2 ~ ssc4 * ic, data = data) # Additive + interaction
+```
+
+```{r, echo=TRUE, eval=FALSE}
+# AIC and BIC multinomial models
+cat("Model m1 (Null): AIC =", AIC(m1), "  |  BIC =", BIC(m1), "\n")
+cat("Model m2 (IC only): AIC =", AIC(m2), "  |  BIC =", BIC(m2), "\n")
+cat("Model m3 (Weakness only): AIC =", AIC(m3), "  |  BIC =", BIC(m3), "\n")
+cat("Model m4 (Additive): AIC =", AIC(m4), "  |  BIC =", BIC(m4), "\n")
+cat("Model m5 (Interaction): AIC =", AIC(m5), "  |  BIC =", BIC(m5), "\n")
+```
+
+```{r, echo=TRUE, eval=FALSE}
+# Likelihood ratio test for multinomial models
+# Null (m1) vs Treatment only (m2)
+lrt_m1_m2 <- 1 - pchisq(m1$deviance - m2$deviance,
+                        df = length(coef(m2)) - length(coef(m1)))
+
+# Null (m1) vs Weakness only (m3)
+lrt_m1_m3 <- 1 - pchisq(m1$deviance - m3$deviance,
+                        df = length(coef(m3)) - length(coef(m1)))
+
+# Weakness only (m3) vs Additive model (m4)
+lrt_m3_m4 <- 1 - pchisq(m3$deviance - m4$deviance,
+                        df = length(coef(m4)) - length(coef(m3)))
+
+# Additive model (m4) vs Interaction model (m5)
+lrt_m4_m5 <- 1 - pchisq(m4$deviance - m5$deviance,
+                        df = length(coef(m5)) - length(coef(m4)))
+
+cat("m1 vs m2 (Null vs Treatment): (LRT) p-val =", lrt_m1_m2, "\n")
+cat("m1 vs m3 (Null vs Weakness): (LRT) p-val =", lrt_m1_m3, "\n")
+cat("m3 vs m4 (Weakness vs Additive): (LRT) p-val =", lrt_m3_m4, "\n")
+cat("m4 vs m5 (Additive vs Interaction): (LRT) p-val =", lrt_m4_m5, "\n")
+```
+
+**Ordinal regression models SSC-F given SSC-W and IC**
+
+```{r, echo=TRUE, eval=FALSE}
+# Ordinal regression models
+o1 <- polr(ssc2_ord ~ 1, data = data) # Null model
+o2 <- polr(ssc2_ord ~ ic, data = data) # Treatment only
+o3 <- polr(ssc2_ord ~ ssc4, data = data) # Weakness only
+o4 <- polr(ssc2_ord ~ ssc4 + ic, data = data) # Additive
+o5 <- polr(ssc2_ord ~ ssc4 * ic, data = data) # Interaction
+```
+
+
+```{r, echo=TRUE, eval=FALSE}
+# AIC and BIC ordinal models
+cat("Model o1 (Null): AIC =", AIC(o1), "  |  BIC =", BIC(o1), "\n")
+cat("Model o2 (IC only): AIC =", AIC(o2), "  |  BIC =", BIC(o2), "\n")
+cat("Model o3 (Weakness only): AIC =", AIC(o3), "  |  BIC =", BIC(o3), "\n")
+cat("Model o4 (Additive): AIC =", AIC(o4), "  |  BIC =", BIC(o4), "\n")
+cat("Model o5 (Interaction): AIC =", AIC(o5), "  |  BIC =", BIC(o5), "\n")
+```
+
+```{r, echo=TRUE, eval=FALSE}
+# Likelihood ratio test for ordinal models 
+# Null (o1) vs Treatment only (o2)
+a1 <- anova(o1, o2)
+
+# Null (o1) vs Weakness only (o3)
+a2 <- anova(o1, o3)
+
+# Weakness (o3) only vs Additive (o4)
+a3 <- anova(o3, o4)
+
+# Additive (o4) vs Interaction (o5)
+a4 <- anova(o4, o5)
+
+
+cat("o1 vs o2 (Null vs Treatment): (LRT) p-val =", a1$`Pr(Chi)`[2], "\n")
+cat("o1 vs o3 (Null vs Weakness): (LRT) p-val =", a2$`Pr(Chi)`[2], "\n")
+cat("o3 vs o4 (Weakness vs Additive): (LRT) p-val =", a3$`Pr(Chi)`[2], "\n")
+cat("o4 vs o5 (Additive vs Interaction): (LRT) p-val =", a4$`Pr(Chi)`[2], "\n")
+```
+
+**2. Regression model Weakness given Fatigue and Treatment**
+
+**Multinomial regression models SSC-W given SSC-F and IC**
+
+```{r, echo=TRUE, eval=FALSE}
+# Multinomial regression models
+mm1 <- multinom(ssc4 ~ 1, data = data) # Null
+mm2 <- multinom(ssc4 ~ ic, data = data) # IC only
+mm3 <- multinom(ssc4 ~ ssc2, data = data) # Fatigue only
+mm4 <- multinom(ssc4 ~ ssc2 + ic, data = data) # Additive
+mm5 <- multinom(ssc4 ~ ssc2 * ic, data = data) # Interaction
+```
+
+```{r, echo=TRUE, eval=FALSE}
+# AIC and BIC multinomial models
+cat("mm1 (Null): AIC =", AIC(mm1), " | BIC =", BIC(mm1), "\n")
+cat("mm2 (IC only): AIC =", AIC(mm2), " | BIC =", BIC(mm2), "\n")
+cat("mm3 (Fatigue only): AIC =", AIC(mm3), " | BIC =", BIC(mm3), "\n")
+cat("mm4 (Additive): AIC =", AIC(mm4), " | BIC =", BIC(mm4), "\n")
+cat("mm5 (Interaction): AIC =", AIC(mm5), " | BIC =", BIC(mm5), "\n")
+```
+
+```{r, echo=TRUE, eval=FALSE}
+#Likelihood ratio test for multinomial models
+# Null (mm1) vs Treatment only (mm2)
+lrt_mm1_mm2 <- 1 - pchisq(mm1$deviance - mm2$deviance, 
+                          df = length(coef(mm2)) - length(coef(mm1)))
+
+# Null (mm1) vs Fatigue only (mm3)
+lrt_mm1_mm3 <- 1 - pchisq(mm1$deviance - mm3$deviance, 
+                          df = length(coef(mm3)) - length(coef(mm1)))
+
+# Fatigue only (mm3) vs Additive model (mm4)
+lrt_mm3_mm4 <- 1 - pchisq(mm3$deviance - mm4$deviance, 
+                          df = length(coef(mm4)) - length(coef(mm3)))
+
+# # Additive model (mm4) vs Interaction model (mm5)
+lrt_mm4_mm5 <- 1 - pchisq(mm4$deviance - mm5$deviance, 
+                          df = length(coef(mm5)) - length(coef(mm4)))
+
+
+cat("mm1 vs mm2 (Null vs IC): (LRT) p-val =", lrt_mm1_mm2, "\n")
+cat("mm1 vs mm3 (Null vs Fatigue): (LRT) p-val =", lrt_mm1_mm3, "\n")
+cat("mm3 vs mm4 (Fatigue vs Additive): (LRT) p-val =", lrt_mm3_mm4, "\n")
+cat("mm4 vs mm5 (Additive vs Interaction): (LRT) p-val =", lrt_mm4_mm5, "\n")
+```
+
+**Ordinal regression models SSC-W given SSC-F and IC**
+
+```{r, echo=TRUE, eval=FALSE}
+# Ordinal regression models
+oo1 <- polr(ssc4_ord ~ 1, data = data) # Null
+oo2 <- polr(ssc4_ord ~ ic, data = data)  # IC only
+oo3 <- polr(ssc4_ord ~ ssc2_ord, data = data) # Fatigue only
+oo4 <- polr(ssc4_ord ~ ssc2_ord + ic, data = data) # Additive
+oo5 <- polr(ssc4_ord ~ ssc2_ord * ic, data = data) # Interaction
+```
+
+```{r, echo=TRUE, eval=FALSE}
+# AIC and BIC ordinal models
+cat("oo1 (Null): AIC =", AIC(oo1), " | BIC =", BIC(oo1), "\n")
+cat("oo2 (IC only): AIC =", AIC(oo2), " | BIC =", BIC(oo2), "\n")
+cat("oo3 (Fatigue only): AIC =", AIC(oo3), " | BIC =", BIC(oo3), "\n")
+cat("oo4 (Additive): AIC =", AIC(oo4), " | BIC =", BIC(oo4), "\n")
+cat("oo5 (Interaction): AIC =", AIC(oo5), " | BIC =", BIC(oo5), "\n")
+```
+
+```{r, echo=TRUE, eval=FALSE}
+# Likelihood ratio test for ordinal models 
+# Null (oo1) vs Treatment only (oo2)
+aa1 <- anova(oo1, oo2)
+
+# Null (oo1) vs Fatigue only (oo3)
+aa2 <- anova(oo1, oo3)
+
+# Fatigue (oo3) vs Additive (oo4)
+aa3 <- anova(oo3, oo4)
+
+# Additive (oo4) vs Interaction (oo5)
+aa4 <- anova(oo4, oo5)
+
+cat("oo1 vs oo2 (Null vs IC): (LRT) p-val =", aa1$`Pr(Chi)`[2], "\n")
+cat("oo1 vs oo3 (Null vs Fatigue): (LRT) p-val =", aa2$`Pr(Chi)`[2], "\n")
+cat("oo3 vs oo4 (Fatigue vs Additive): (LRT) p-val =", aa3$`Pr(Chi)`[2], "\n")
+cat("oo4 vs oo5 (Additive vs Interaction): (LRT) p-val =", aa4$`Pr(Chi)`[2], "\n")
+
+```
+
+**3. Log-linear models**
+
+```{r, echo=TRUE, eval=FALSE}
+# Saturated model [123]
+saturated.loglin <- loglin(table3d, margin = list(c(1,2,3)), fit = TRUE, param = TRUE)
+
+cat("Likelihood ratio statistic:",saturated.loglin$lrt, "\n")
+cat(
+  "P-value for testing H0 based on G^2:",
+  1 - pchisq(
+    saturated.loglin$lrt, 
+    saturated.loglin$df), 
+  "\n")
+```
+
+```{r, echo=TRUE, eval=FALSE}
+# Complete independence [1][2][3]
+indep.loglin <- loglin(table3d, margin = list(1,2,3), fit = TRUE, param = TRUE)
+
+cat("Likelihood ratio statistic:",indep.loglin$lrt, "\n")
+cat("X^2 statistic:",indep.loglin$pearson, "\n")
+
+cat("P-value for testing H0 based on G^2:", 1 - pchisq(indep.loglin$lrt, indep.loglin$df), "\n")
+
+cat("P-value for testing H0 based on X^2:",1 - pchisq(indep.loglin$pearson, indep.loglin$df), "\n")
+```
+
+```{r, echo=TRUE, eval=FALSE}
+# One variable independent of two [1][23]
+X1indepX2X3 <- loglin(table3d, margin = list(1,c(2,3)), fit = TRUE, param = TRUE)
+
+cat("Likelihood ratio statistic:",X1indepX2X3$lrt, "\n")
+cat("X^2 statistic:",X1indepX2X3$pearson, "\n")
+
+cat("P-value for testing H0 based on G^2:", 1 - pchisq(X1indepX2X3$lrt, X1indepX2X3$df), "\n")
+
+cat("P-value for testing H0 based on X^2:",1 - pchisq(X1indepX2X3$pearson, X1indepX2X3$df), "\n")
+```
+
+```{r, echo=TRUE, eval=FALSE}
+# One variable independent of two [2][13]
+X2indepX1X3 <- loglin(table3d, margin = list(2,c(1,3)), fit = TRUE, param = TRUE)
+
+cat("Likelihood ratio statistic:",X2indepX1X3$lrt, "\n")
+cat("X^2 statistic:",X2indepX1X3$pearson, "\n")
+
+cat("P-value for testing H0 based on G^2:", 1 - pchisq(X2indepX1X3$lrt, X2indepX1X3$df), "\n")
+
+cat("P-value for testing H0 based on X^2:",1 - pchisq(X2indepX1X3$pearson, X2indepX1X3$df), "\n")
+```
+
+```{r, echo=TRUE, eval=FALSE}
+# One variable independent of two [3][12]
+X3indepX1X2 <- loglin(table3d, margin = list(3,c(1,2)), fit = TRUE, param = TRUE)
+
+cat("Likelihood ratio statistic:",X3indepX1X2$lrt, "\n")
+cat("X^2 statistic:",X3indepX1X2$pearson, "\n")
+
+cat("P-value for testing H0 based on G^2:", 1 - pchisq(X3indepX1X2$lrt, X3indepX1X2$df), "\n")
+
+cat("P-value for testing H0 based on X^2:",1 - pchisq(X3indepX1X2$pearson, X3indepX1X2$df), "\n")
+```
+
+```{r, echo=TRUE, eval=FALSE}
+# Conditional Independence [12][13]
+X2indepX3givenX1 <- loglin(table3d, margin = list(c(1,2),c(1,3)), fit = TRUE, param = TRUE)
+
+cat("Likelihood ratio statistic:",X2indepX3givenX1$lrt, "\n")
+cat("X^2 statistic:",X2indepX3givenX1$pearson, "\n")
+
+cat(
+  "P-value for testing H0 based on G^2:",
+  1 - pchisq(
+    X2indepX3givenX1$lrt,
+    X2indepX3givenX1$df),
+  "\n")
+
+cat(
+  "P-value for testing H0 based on X^2:",
+  1 - pchisq(
+    X2indepX3givenX1$pearson,
+    X2indepX3givenX1$df),
+  "\n")
+```
+
+```{r, echo=TRUE, eval=FALSE}
+# Conditional Independence [12][23]
+X1indepX3givenX2 <- loglin(table3d, margin = list(c(1,2),c(2,3)), fit = TRUE, param = TRUE)
+
+cat("Likelihood ratio statistic:",X1indepX3givenX2$lrt, "\n")
+cat("X^2 statistic:",X1indepX3givenX2$pearson, "\n")
+
+cat(
+  "P-value for testing H0 based on G^2:",
+  1 - pchisq(
+    X1indepX3givenX2$lrt,
+    X1indepX3givenX2$df),
+  "\n")
+
+cat(
+  "P-value for testing H0 based on X^2:",
+  1 - pchisq(
+    X1indepX3givenX2$pearson,
+    X1indepX3givenX2$df),
+  "\n")
+```
+
+```{r, echo=TRUE, eval=FALSE}
+# Conditional Independence [13][23]
+X1indepX2givenX3 <- loglin(table3d, margin = list(c(1,3),c(2,3)), fit = TRUE, param = TRUE)
+
+cat("Likelihood ratio statistic:",X1indepX2givenX3$lrt, "\n")
+cat("X^2 statistic:",X1indepX2givenX3$pearson, "\n")
+
+cat(
+  "P-value for testing H0 based on G^2:",
+  1 - pchisq(
+    X1indepX2givenX3$lrt,
+    X1indepX2givenX3$df),
+  "\n")
+
+cat(
+  "P-value for testing H0 based on X^2:",
+  1 - pchisq(X1indepX2givenX3$pearson,
+             X1indepX2givenX3$df),
+  "\n")
+```
+
+```{r, echo=TRUE, eval=FALSE}
+# Model of No Second Order Interaction [12][13][23]
+no2nd.loglin <- loglin(table3d, margin = list(c(1,2),c(1,3),c(2,3)), fit = TRUE, param = TRUE)
+
+cat("Likelihood ratio statistic:",no2nd.loglin$lrt, "\n")
+cat("X^2 statistic:",no2nd.loglin$pearson, "\n")
+
+cat("P-value for testing H0 based on G^2:", 1 - pchisq(no2nd.loglin$lrt,no2nd.loglin$df), "\n")
+
+cat("P-value for testing H0 based on X^2:",1 - pchisq(no2nd.loglin$pearson, no2nd.loglin$df), "\n")
+```
+
+**4. Model Selection**
+
+```{r, echo=TRUE, eval=FALSE}
+# Conditional [12][13] vs No second order [12][13][23] 
+cat(
+  "Conditional [12][13] vs No second order [12][13][23: p-val =",
+  1 - pchisq(
+    X2indepX3givenX1$lrt-no2nd.loglin$lrt,
+    X2indepX3givenX1$df-no2nd.loglin$df)
+  )
+```
+
+```{r, echo=TRUE, eval=FALSE}
+# Conditional [12][23] vs No second order [12][13][23]
+cat(
+  "Conditional [12][23] vs No second order [12][13][23]: p_val =",
+  1 - pchisq(
+    X1indepX3givenX2$lrt-no2nd.loglin$lrt,
+    X1indepX3givenX2$df-no2nd.loglin$df)
+  )
+```
