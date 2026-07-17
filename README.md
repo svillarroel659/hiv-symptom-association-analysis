@@ -42,3 +42,7 @@ Overall, the results suggest that the intervention may influence weakness mainly
 - R Markdown
 - `nnet`
 - `MASS`
+
+## Data Availability
+
+The dataset used in this project was provided for academic use and cannot be shared publicly. Therefore, the data file is not included in this repository.
