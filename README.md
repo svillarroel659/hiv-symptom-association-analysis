@@ -34,7 +34,7 @@ The analysis was conducted in R using:
 - Treatment did not show a clear direct effect on weakness after fatigue was considered.
 - The log-linear analysis supported all pairwise relationships without requiring a three-way interaction.
 
-Overall, the results suggest that the intervention may influence weakness mainly through its effect on fatigue.
+Overall, treatment was associated with lower fatigue severity, while its independent association with weakness was less clear after accounting for fatigue. Further analysis would be needed to establish whether fatigue mediates the treatment's effect on weakness.
 
 ## Tools
 
@@ -46,3 +46,9 @@ Overall, the results suggest that the intervention may influence weakness mainly
 ## Data Availability
 
 The dataset used in this project was provided for academic use and cannot be shared publicly. Therefore, the data file is not included in this repository.
+
+## Limitations
+
+The dataset contained repeated symptom reports from the same participants, but observations were treated as independent in this analysis. The models also did not adjust for additional clinical or demographic variables.
+
+Future analysis could use longitudinal methods to account for repeated measurements and investigate treatment effects more directly.
